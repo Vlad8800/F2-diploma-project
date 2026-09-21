@@ -2,7 +2,7 @@
 
 # UseTrace Studio
 
-### Розробка веб-системи наскрізного моделювання вимог до програмного забезпечення з реактивною двосторонньою генерацією UML-діаграм, верифікаційного беклогу та автоматизованою оцінкою трудовитрат
+### Розробка розподіленої системи наскрізного моделювання та трасування вимог до програмного забезпечення на основі семантичних графів із забезпеченням транзакційної узгодженості та автоматизованим оцінюванням трудовитрат
 
 *Enterprise Requirements Lifecycle, Visual Modeling & WBS Engine*
 
@@ -10,8 +10,8 @@
 
 > **Галузь знань:** 12 «Інформаційні технології»  
 > **Спеціальність:** F2 (121) «Інженерія програмного забезпечення»  
-> **Кафедра / інститут:** кафедра ПЗКС, ННІ ФТКН ЧНУ  
-> **Виконавець:** Сусла Владислав Валерійович, 4 курс  
+> **Інститут / кафедра:** кафедра ПЗКС, ННІ ФТКН ЧНУ  
+> **Виконавець:** Сусла Владислав Валерійович, 4 курс, група F2  
 > **Науковий керівник:** Комісарчук Володимир Васильович, к. т. н., доцент  
 > **Docs-as-Code репозиторій:** [Vlad8800/F2-diploma-project](https://github.com/Vlad8800/F2-diploma-project)
 
@@ -19,276 +19,282 @@
 
 ## Зміст
 
-- [Проблема](#проблема)
-- [Паспорт продукту](#паспорт-продукту)
-- [Мета та цінність](#мета-та-цінність)
-- [Архітектура системи](#архітектура-системи)
-- [Модель вимог і неявні зв’язки](#модель-вимог-і-неявні-звязки)
-- [NLP-конвеєр](#nlp-конвеєр)
-- [Реактивні діаграми](#реактивні-діаграми)
-- [Аналіз впливу змін і QA](#аналіз-впливу-змін-і-qa)
-- [WBS 8/40 та планування](#wbs-840-та-планування)
-- [Інтеграція з беклогом](#інтеграція-з-беклогом)
-- [Експорт і хмарне сховище](#експорт-і-хмарне-сховище)
+- [Паспорт кваліфікаційного проєкту](#паспорт-кваліфікаційного-проєкту)
+- [Актуальність та інженерна проблема](#актуальність-та-інженерна-проблема)
+- [Об’єкт, предмет і мета](#обєкт-предмет-і-мета)
+- [Архітектурна концепція](#архітектурна-концепція)
+- [Багаторівнева графова метамодель](#багаторівнева-графова-метамодель)
+- [Валідація та аналіз впливу змін](#валідація-та-аналіз-впливу-змін)
+- [Реактивна синхронізація UML](#реактивна-синхронізація-uml)
+- [WBS, UCP, PERT і CPM](#wbs-ucp-pert-і-cpm)
+- [Надійність та транзакційна інтеграція](#надійність-та-транзакційна-інтеграція)
+- [Хмарне архівування специфікацій](#хмарне-архівування-специфікацій)
+- [Адресація вимог керівника](#адресація-вимог-керівника)
 - [Технологічний стек](#технологічний-стек)
-- [English summary](#english-summary)
+- [English version](#english-version)
 
 ---
 
-## Проблема
+## Паспорт кваліфікаційного проєкту
 
-У промисловій розробці ПЗ вимоги, архітектура, QA та планування часто існують у відокремлених інструментах. Це спричиняє **Requirements Traceability Decay** — поступову втрату актуальних зв’язків між артефактами життєвого циклу.
-
-| Ризик | Практичний наслідок |
+| Параметр | Визначення |
 |:--|:--|
-| **Невалідована логіка** | Регресійні дефекти та непередбачувані шляхи виконання. |
-| **Застарілі тести** | Набір тестів більше не підтверджує фактичну поведінку системи (*stale test suites*). |
-| **Подвійна робота** | Ручне перемальовування схем і повторне внесення задач у трекери. |
-| **Неточне планування** | *Estimation Gap*: похибки в оцінці трудовитрат, строків і критичного шляху. |
+| **Офіційна тема** | «Розробка розподіленої системи наскрізного моделювання та трасування вимог до програмного забезпечення на основі семантичних графів із забезпеченням транзакційної узгодженості та автоматизованим оцінюванням трудовитрат». |
+| **Робоча назва продукту** | **UseTrace Studio** (*Enterprise Requirements Lifecycle, Visual Modeling & WBS Engine*). |
+| **Тип ПЗ** | Розподілена веб-орієнтована SaaS-система: SPA із асинхронним сервісним кластером. |
+| **Сфера застосування** | Requirements Engineering, системний аналіз, QA, календарне планування SDLC, аудит трасованості та комплаєнс ISO/IEC/IEEE 29148 й ISO/IEC 25010. |
+| **Прикладна цінність** | Мінімізація семантичного розриву між текстовими специфікаціями, UML-моделями, тестами та планом реалізації. |
 
-Документаційні інструменти (Confluence, Notion), редактори діаграм (Draw.io, PlantUML, Mermaid) і трекери задач (Jira, Linear) ефективні у своїх площинах, але не забезпечують спільної семантичної моделі та автоматичного контролю цілісності зв’язків.
+## Актуальність та інженерна проблема
 
-## Паспорт продукту
+Сучасна інженерія ПЗ працює з фрагментованими інструментами: вимоги зберігаються в документах, діаграми — у графічних редакторах, а задачі — у незалежних трекерах. Через це артефакти втрачають узгодженість упродовж ітеративної розробки.
 
-| Параметр | Опис |
+| Проблема | Прояв | Наслідок |
+|:--|:--|:--|
+| **Requirements Traceability Decay** | Зв’язки між функціональними кроками, моделями й тестами застарівають. | Регресійні дефекти та невалідовані стани. |
+| **Round-trip Information Loss** | Зміни на діаграмі не повертаються до формальної специфікації. | Втрата семантичного контексту. |
+| **Estimation Gap** | Оцінка не пов’язана зі складністю вимог і середовищем розробки. | Помилки WBS та строків релізу. |
+| **Dual-write Anomalies** | Локальна модель і Jira/Linear оновлюються незалежно. | Розсинхронізований беклог. |
+
+Інженерне завдання полягає у створенні **Abstract Semantic Graph (ASG)** — формалізованого ядра, що детерміновано транслює вимоги у UML-проєкції, обчислює вплив змін і гарантує узгодженість розподіленого стану.
+
+## Об’єкт, предмет і мета
+
+| Категорія | Опис |
 |:--|:--|
-| **Робоча назва** | **UseTrace Studio** — *Enterprise Requirements Lifecycle, Visual Modeling & WBS Engine*. |
-| **Тип ПЗ** | Веб-орієнтована SaaS-система у форматі **Single Page Application (SPA)**. |
-| **Призначення** | Інтелектуальне управління вимогами, реактивна генерація візуальних моделей, графова декомпозиція задач, WBS-оцінювання та інтеграція з хмарною інфраструктурою. |
-| **Сфера застосування** | Requirements Engineering, системний і бізнес-аналіз, QA, операційний менеджмент розробки ПЗ (Agile / Scrum / Waterfall), аудит документації за IEEE/ISO. |
-| **Ключовий результат** | Узгоджений ланцюг «вимога → UML-модель → тест / задача → оцінка → документація». |
+| **Об’єкт** | Процеси інженерії вимог, структурно-поведінкової декомпозиції та системного моделювання в SDLC. |
+| **Предмет** | Методи й алгоритмічні засоби графового представлення специфікацій, двосторонньої синхронізації UML, UCP/PERT-оцінювання та транзакційної інтеграції. |
+| **Мета** | Створити відмовостійку веб-систему, що автоматизує синтез артефактів інженерії вимог, забезпечує строгість ASG-проєкцій і дає обґрунтовану оцінку ресурсів. |
 
-### Місія продукту
-
-**UseTrace Studio** усуває розрив між первинним неструктурованим описом ідеї — «зі слів клієнта» — та інженерною реалізацією. Платформа автоматизує до **80% рутинної роботи** з:
-
-- формалізації та структурування вимог;
-- побудови трьох типів UML-діаграм;
-- розрахунку деталізованого WBS у годинах за моделлю 8/40;
-- автогенерації верифікаційного беклогу в трекерах задач;
-- розгортання структурованого архіву артефактів у хмарному сховищі.
-
-## Мета та цінність
-
-**Мета дослідження** — створити модель, алгоритмічний базис і програмну платформу для наскрізної синхронізації вимог, аналізу наслідків змін і автоматизованого формування інженерних артефактів.
-
-UseTrace Studio перетворює вимоги на спільний граф знань. Зміна одного атомарного кроку визначає, **які UML-діаграми, контракти, тести, пакети WBS і строки мають бути оновлені**.
-
-## Архітектура системи
+## Архітектурна концепція
 
 ```mermaid
 flowchart TB
-    UI["Presentation Tier<br/>Vue 3 · Canvas · DSL Editor · Backlog"]
-    CORE["UseTrace Core Engine<br/>FastAPI"]
-    DB[("PostgreSQL + Apache AGE<br/>Metadata · Attributed Directed Graph")]
-    OS[("Object Storage<br/>SRS · PDF · Markdown · Vectors")]
-    UI <-->|JSON-RPC / WebSocket| CORE
-    CORE --> DB
-    CORE --> OS
-    subgraph M["Core Engine Modules"]
-      P["Multi-Tier Parser<br/>DSL → ASG"]
-      I["Impact Engine<br/>Delta · Transitive Closure"]
-      W["WBS / CPM Engine<br/>8/40 Focus Factor"]
-      D["Diagram Projection<br/>Use Case · Sequence · Activity"]
-      Q["Test Suite Matrix<br/>Invalidator"]
-      S["Tracker Syncer<br/>Jira · Linear · Outbox"]
+    subgraph P["Presentation Tier"]
+      UI["Vue 3 SPA<br/>Pinia · WebGL / SVG Canvas"]
     end
-    CORE --- M
+    subgraph G["Application Gateway"]
+      API["FastAPI Gateway<br/>Pydantic v2 · WebSocket / JSON-RPC"]
+    end
+    subgraph E["Algorithmic & Graph Processing Core"]
+      ASG["ASG Engine & Metamodel<br/>Single Source of Truth"]
+      IMPACT["Topology & Impact Engine<br/>Tarjan SCC · Transitive Closure"]
+      EST["WBS Engine<br/>UCP · PERT · CPM"]
+    end
+    subgraph D["Data & Transactional Layer"]
+      DB[("PostgreSQL + JSONB + Apache AGE")]
+      REDIS[("Redis<br/>Queue Broker & Cache")]
+      OUTBOX["Transactional Outbox Worker"]
+    end
+    subgraph X["External Ecosystem"]
+      TR["Jira Cloud REST v3<br/>Linear GraphQL"]
+      ST["AWS S3 / MinIO<br/>Requirements Archive"]
+    end
+    UI <-->|WebSocket / JSON-RPC| API
+    API --> ASG
+    API --> REDIS
+    ASG --> IMPACT & EST
+    ASG --> DB
+    REDIS --> OUTBOX
+    OUTBOX --> TR & ST
 ```
 
-### Принцип функціонування
+## Багаторівнева графова метамодель
 
-1. **Опис:** аналітик вносить вимоги через внутрішній DSL або візуальний редактор.
-2. **Нормалізація:** артефакти компілюються в канонічний **Abstract Semantic Graph (ASG)** — єдине джерело істини.
-3. **Аналіз:** система визначає дельту $\Delta$ та транзитивно обходить пов’язані підграфи.
-4. **Реакція:** оновлюються UML-проєкції, QA-матриця, оцінки WBS/CPM і зовнішні трекери.
-5. **Публікація:** формується нормалізована SRS та структурований архів у хмарному сховищі.
-
-## Модель вимог і неявні зв’язки
+ASG — типізований спрямований атрибутований мультиграф $G = (V, E, \mu, \nu)$, де $V$ — множина сутностей вимог, а $E$ — множина спрямованих семантичних зв’язків.
 
 ```mermaid
 flowchart LR
-    BR["BR<br/>Business Requirements"] --> UR["UR<br/>User Requirements"]
-    UR --> FR["FR<br/>Functional Requirements"]
-    NFR["NFR<br/>Non-Functional Requirements"] -. обмежує .-> FR
-    FR --> API["API Contracts"]
-    FR --> DIA["Use Case · Sequence · Activity"]
-    FR --> QA["BDD / Test Cases"]
-    FR --> WBS["WBS · CPM · Backlog"]
+  BR["Business Requirements<br/>Goals · ROI · Rules"] -->|derives| UR["User Requirements<br/>Actors · Stories · Use Cases"]
+  UR -->|refines| FR["Functional Requirements<br/>Steps · Contracts"]
+  NFR["Non-Functional Requirements<br/>ISO/IEC 25010"] -. constrains .-> FR
+  FR -->|satisfies| API["API Endpoints & Schemas"]
+  FR -->|verifies| QA["Verification Test Matrix"]
+  FR -->|maps_to| WBS["WBS Packages<br/>UI · BE · DB · QA"]
 ```
 
-| Рівень | Сутності | Візуалізація | Беклог | Метод оцінювання |
-|:--|:--|:--|:--|:--|
-| **Business Requirements ($BR$)** | Vision & Scope, бізнес-правила, модулі | Карта бізнес-цілей, Context Map | Epic | T-shirt sizing (XS–XL) |
-| **User Requirements ($UR$)** | Актори, сценарії, user stories | UML Use Case, User Journey | User Story | Story points (Fibonacci) |
-| **Functional Requirements ($FR$)** | Кроки сценаріїв, Hoare triples, API-контракти | UML Sequence, Activity | Task / Sub-task | WBS packages, години |
-| **Non-Functional Requirements ($NFR$)** | Метрики ISO/IEC 25010, SLA, rate limits | Специфікація обмежень | Infra task, bug template | Фактори складності ($TCF$) |
+| Відношення | Семантика |
+|:--|:--|
+| `derives_from` | Походження деталізованої вимоги від цілі вищого рівня. |
+| `refines` | Декомпозиція сценарію на атомарні кроки взаємодії. |
+| `constrains` | Накладення якісних і архітектурних обмежень. |
+| `satisfies` | Відповідність API або компонента специфікації. |
+| `verifies` | Зв’язок BDD/QA-сценарію з функціональним кроком. |
+| `conflicts_with` | Семантична суперечність або взаємовиключення вимог. |
 
-### Implicit Requirements Engine
-
-Семантичний аудит графа виявляє приховані архітектурні вимоги ще до реалізації:
-
-- **Тайм-аути та відмови API:** інтеграція із зовнішнім сервісом породжує гілки `503`/`504 Timeout Exception Flow`.
-- **Ідемпотентність транзакцій:** фінансові та інші мутуючі операції отримують вимогу захисту від повторних запитів (*network retry* / *double submit*).
-- **Компенсуючі транзакції:** збої під час збереження стану породжують сценарії відкату та збереження консистентності.
-
-## NLP-конвеєр
+## Валідація та аналіз впливу змін
 
 ```mermaid
-flowchart TD
-    RAW["Сирий текст / нотатки зустрічі"] --> NLP["NLP parsing & entity extraction"]
-    NLP -->|"Actors · Targets · Actions · Conditions"| DAG["Graph Builder / DAG Synthesis"]
-    DAG -->|"Happy path · Alternative · Exception flows"| VAL["Human-in-the-loop validation"]
-    VAL -->|"Затверджена структура"| ASG["Abstract Semantic Graph"]
+flowchart TB
+  DELTA["Модифікація вимоги<br/>ΔV, ΔE"] --> SCC["Tarjan SCC<br/>Пошук циклічних аномалій"]
+  SCC -->|"Ациклічність підтверджена"| CLOSURE["Транзитивне замикання G*<br/>Blast Radius"]
+  CLOSURE --> QA["QA Matrix<br/>REQUIRES_REVIEW · TRACEABILITY_GAP"]
+  CLOSURE --> PLAN["WBS / CPM<br/>Оцінка й критичний шлях"]
 ```
 
-- **Сегментація сутностей:** вилучення ролей (Human/System Actors) і цільових систем: API, БД, шини черг.
-- **Семантичний аналіз розгалужень:** розпізнавання маркерів «якщо», «інакше», «у разі збою» для розділення основних, альтернативних і виняткових потоків.
-- **Генерація структури:** автоматичне створення вершин і ребер графа з можливістю drag-and-drop валідації аналітиком.
+- **Детекція структурних аномалій:** алгоритм Тар’яна виявляє сильно зв’язані компоненти за $O(|V| + |E|)$.
+- **Аналіз delta-impact:** для зміненого вузла обчислюється досяжність за прямими та зворотними залежностями; зачеплені сутності отримують стан `BLAST_RADIUS_IMPACTED`.
+- **Аудит повноти:** система знаходить ізольовані вимоги (`ISOLATED_REQUIREMENT`) і неперевірені функціональні гілки (`TRACEABILITY_GAP`).
 
-## Реактивні діаграми
+## Реактивна синхронізація UML
 
-Система транслює підграфи ASG у векторні діаграми через Mermaid.js або PlantUML:
+Діаграми є проєкціями (*projective views*) над ASG, а не незалежними файлами.
 
-| Діаграма | Що відображає |
+| Проєкція | Вміст |
 |:--|:--|
-| **UML Use Case** | Межі системи, акторів, зв’язки `<<include>>` та `<<extend>>`. |
-| **UML Sequence** | Хронологію взаємодії компонентів, `alt`/`else`, `loop`, `par` і статус-коди. |
-| **UML Activity** | Операційний потік від Start Node до Final State через точки розгалуження. |
+| **UML Use Case** | Актори, межі системи, відношення `<<include>>` і `<<extend>>`. |
+| **UML Sequence** | Lifelines, системні виклики, `alt` / `else`, `loop`, коди помилок. |
+| **UML Activity** | Бізнес-потік, decision diamonds, паралельні forks/joins. |
 
-**Two-Way Reactivity:** зміна текстового або табличного опису оновлює SVG-діаграми; редагування елемента на полотні мутує вузли ASG і перераховує всі залежні артефакти.
+Механізм **Round-trip Mapping** перетворює зміну на полотні WebGL / Cytoscape у `GraphDeltaEvent`. Подія валідується бекендом, змінює ASG та реактивно регенерує всі залежні UML-проєкції без втрати користувацьких метаданих.
 
-## Аналіз впливу змін і QA
+## WBS, UCP, PERT і CPM
 
-Для дельти змін $\Delta V$ та $\Delta E$ формується транзитивне замикання:
+Контур оцінювання поєднує модифікований Use Case Points, триточкову оцінку PERT і Critical Path Method.
 
-$$G^* = (V, E^*)$$
+$$UCP = (UUW + UAW) \times TCF \times ECF$$
 
-```text
-Зміна кроку вимоги або Use Case
-                │
-                ▼
-       Diff & Impact Analyzer
-          ┌─────┴─────┐
-          ▼           ▼
-  Зачеплені тести   Зачеплені WBS-задачі
-  REQUIRES_REVIEW   Оновлення нормо-годин
-  або INVALIDATED   і синхронізація Jira / Linear
-```
+- $UUW$ — сумарна вага прецедентів: Simple $\leq 3$, Average $4\text{–}7$, Complex $> 7$ транзакцій.
+- $UAW$ — вага акторів системи: від простого API до складного GUI.
+- $TCF = 0.65 + 0.01 \times \sum_{i=1}^{13} C_i w_i$ — технічна складність.
+- $ECF = 1.4 - 0.03 \times \sum_{j=1}^{8} F_j w_j$ — фактори середовища.
 
-- **Traceability Matrix:** автоматичне покриття позитивних (*happy path*) і негативних (*exception flow*) шляхів за допомогою DFS/BFS.
-- **BDD-генерація:** створення тестових сценаріїв у форматі `Given–When–Then`.
-- **Контроль зв’язків:** типи `derives_from`, `satisfies`, `verifies`, `conflicts_with` запобігають висячим вузлам і суперечливим циклам.
+### Декомпозиція у робочі пакети
 
-## WBS 8/40 та планування
-
-Функціональна вимога декомпозується на атомарні інженерні задачі:
-
-$$\text{Functional Step} \longrightarrow \text{Work Package} = \{\text{UI Task},\ \text{Backend Endpoint},\ \text{DB Migration},\ \text{QA Unit/E2E}\}$$
-
-### Нормативи декомпозиції
-
-| Тип дії | Робочий пакет WBS | Базовий норматив |
+| Тип системної дії | Work Package | Базовий норматив |
 |:--|:--|:--|
-| Користувацький ввід / форма | UI-компонент, маска вводу, клієнтська валідація | 4–6 год |
-| Серверна бізнес-логіка | Контролер, сервісний шар, DTO-валідація, авторизація | 5–8 год |
-| Операція з БД | Міграція, індекси, транзакційний репозиторій | 3–5 год |
-| Зовнішній сервіс / API | SDK-модуль, помилки, повторні спроби | 6–10 год |
-| Обробка винятку | Error handler, логування, локалізація, UI-нотифікація | 2–4 год |
-| Фонова черга / worker | Конфігурація RabbitMQ/Celery, worker | 5–8 год |
+| Користувацький ввід / форма | UI-компонент, маска, валідація, клієнтські стани | 4–6 год |
+| Серверна логіка | Контролер, сервіс, DTO, авторизація | 5–8 год |
+| Операція з БД | Міграція, репозиторій, індекси, транзакції | 3–5 год |
+| Зовнішній сервіс / API | SDK, помилки, retry | 6–10 год |
+| Exception flow | Клас помилки, логування, UI-нотифікація | 2–4 год |
+| Фонова черга / worker | RabbitMQ/Celery, фоновий обробник | 5–8 год |
 
-Оцінка спирається на модифікований метод Use Case Points:
+Для кожного пакета формується оцінка PERT:
 
-$$E = UCP \times CF \times \prod_{i=1}^{m} TCF_i \times \prod_{j=1}^{n} ECF_j$$
+$$E_{WP} = \frac{a + 4m + b}{6}, \qquad \sigma^2 = \left(\frac{b-a}{6}\right)^2$$
 
-Модель 8/40 приймає $\eta_{focus} = \frac{5}{8} = 0.625$: п’ять годин чистого технічного часу на добу.
+Календарне моделювання використовує стандарт 8/40 та фокус-фактор $\eta_{focus} = \frac{5}{8} = 0.625$:
 
-$$T_{total\_hours} = \sum_{i=1}^{m} T_{work\_package_i}$$
+$$T_{total} = \sum_{i=1}^{n} E_{WP_i}, \qquad D_{working} = \frac{T_{total}}{5\ \text{год/день}}$$
 
-$$D_{working\_days} = \frac{T_{total\_hours}}{5\ \text{год/день}}, \qquad W_{weeks} = \frac{T_{total\_hours}}{25}$$
+Модуль CPM обчислює ранні та пізні терміни старту/завершення й визначає критичний шлях у графі робіт.
 
-Алгоритм **Critical Path Method (CPM)** знаходить критичний шлях у топологічно впорядкованому графі робіт і прогнозує дату релізу.
+## Надійність та транзакційна інтеграція
 
-## Інтеграція з беклогом
-
-Патерн **Transactional Outbox** забезпечує ідемпотентний експорт у Jira через REST API та Linear через GraphQL API. Паралельні зміни статусів узгоджуються механізмом **Vector Clocks**.
-
-```text
-[EPIC] Авторизація та керування сесіями  ·  T-shirt: M  ·  WBS: 48 год
-│
-└── [USER STORY] Вхід клієнта з двофакторною автентифікацією  ·  5 SP
-    │   Linked artifact: UC-01-Use-Case-Diagram.svg
-    ├── [TASK · UI] Форма 2FA з таймером оновлення SMS-коду        · 5 год
-    ├── [TASK · Backend] POST /auth/verify-otp + rate limit         · 7 год
-    ├── [TASK · DB] Поля 2fa_secret, otp_attempts у таблиці users   · 3 год
-    └── [BUG TEMPLATE] Вичерпання ліміту спроб, Exception Flow 2b   · High
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as Client SPA
+  participant A as FastAPI Gateway
+  participant D as PostgreSQL (ASG + Outbox)
+  participant W as Outbox Dispatcher
+  participant X as Jira / Linear
+  C->>A: Зміна кроку вимоги
+  A->>D: BEGIN; UPDATE ASG; INSERT Outbox Event; COMMIT
+  D-->>A: Стан збережено
+  A-->>C: WebSocket: state updated
+  W->>D: Отримати PENDING-подію
+  W->>X: Створити / оновити issue з idempotency key
+  X-->>W: Підтвердження
+  W->>D: Позначити подію PROCESSED
 ```
 
-## Експорт і хмарне сховище
+- **Transactional Outbox:** усуває Dual-write Anomaly, оскільки мутація ASG та подія синхронізації фіксуються однією транзакцією.
+- **Vector Clocks:** впорядковують паралельні зміни й сигналізують про конфліктну модифікацію кількома аналітиками.
+- **Ідемпотентні шлюзи:** кожен зовнішній запит має ключ `X-Idempotency-Key = hash(node_id + version)`.
 
-Система підтримує AWS S3, Google Drive API та WebDAV і розгортає уніфіковану структуру артефактів, сумісну з IEEE 830 / ISO/IEC/IEEE 29148.
+### Пряма інтеграція з Jira / Linear
+
+| Артефакт UseTrace Studio | Об’єкт у трекері | Призначення |
+|:--|:--|:--|
+| Business Requirement | Epic / Project | Бізнес-ціль або модуль |
+| User Requirement / Use Case | Story / Issue | Користувацька цінність |
+| WBS Work Package | Task / Sub-task | UI, backend, DB або QA-робота |
+| Exception flow / gap | Bug | Негативний сценарій або дефект трасованості |
+| BDD-сценарій | Test task / linked issue | Верифікація та приймання |
+
+Після затвердження аналітиком система автоматично створює верифікаційний беклог, записує зовнішні ідентифікатори до ASG та двосторонньо синхронізує статуси, оцінки і посилання на артефакти.
+
+## Хмарне архівування специфікацій
+
+UseTrace Studio формує архів, сумісний з ISO/IEC/IEEE 29148, і підтримує авторизоване розгортання в AWS S3, MinIO, Google Drive або WebDAV.
+
+| Крок | Поведінка |
+|:--|:--|
+| **Підключення** | OAuth 2.0 або IAM / credentials; вибір workspace, bucket чи каталогу. |
+| **Валідація** | Перевірка прав на створення, читання та запис. |
+| **Публікація** | Генерація і завантаження SRS, UML-векторів, RTM, BDD та WBS. |
+| **Версіонування** | Створення релізного каталогу, хешування файлів і аудит змін. |
+| **Трасованість** | URL та зовнішні ідентифікатори повертаються до вузлів ASG. |
 
 ```text
-📁 [Project_Name]_v1.0_System_Requirements_Hub/
+📁 [Project_Name]_v1.0_Requirements_Hub/
 ├── 📁 01_Business_Requirements/
 │   ├── Vision_and_Scope_Specification.pdf
 │   └── Epics_and_T_Shirt_Estimates.xlsx
 ├── 📁 02_User_Requirements/
 │   ├── User_Stories_Backlog.xlsx
 │   └── Use_Case_Diagrams/
-│       ├── UC_Overview_All_Actors.svg
-│       └── UC_Module_Details.svg
 ├── 📁 03_Functional_Requirements/
-│   ├── IEEE_830_SRS_Specification.pdf
+│   ├── ISO_IEC_IEEE_29148_SRS_Specification.pdf
 │   ├── Sequence_Diagrams/
-│   │   ├── UC01_Happy_Path.svg
-│   │   └── UC01_Exceptions.svg
-│   └── Activity_Diagrams/UC01_Process_Flow.svg
+│   └── Activity_Diagrams/
 ├── 📁 04_Verification_and_QA/
 │   ├── Traceability_Matrix_RTM.xlsx
-│   ├── Generated_Test_Cases_TestRail.csv
-│   └── Change_Impact_Audit_Log.json
+│   ├── Generated_BDD_Test_Scenarios.feature
+│   └── Blast_Radius_Impact_Report.json
 └── 📁 05_Project_Estimates_and_WBS/
-    ├── Full_Work_Breakdown_Structure_WBS.xlsx
-    └── Resource_Calendar_Schedule_8_40.pdf
+    ├── Parametric_WBS_Estimation_Model.xlsx
+    └── Resource_Calendar_Schedule_CPM_8_40.pdf
 ```
+
+## Адресація вимог керівника
+
+| Джерело | Зауваження / вимога | Реалізація у системі | Статус | Коміт |
+|:--|:--|:--|:--|:--|
+| Аудіозапис консультації | Інтегрувати хмарні сховища для авторизованого розгортання документів за рівнями вимог. | OAuth/IAM-підключення, перевірка прав, версіоноване розгортання SRS, UML, RTM і WBS-артефактів. | Виконано | `fix: address supervisor feedback` |
+| Аудіозапис консультації | Додати пряму інтеграцію з Jira/Linear для автогенерації беклогу: Epics, Stories, Tasks, Bugs. | Transactional Outbox, ідемпотентні API-запити, ASG-мапінг і двостороння синхронізація. | Виконано | `fix: address supervisor feedback` |
+| Аудіозапис консультації | Впровадити деталізовану WBS-декомпозицію до робочих пакетів із розрахунком годин за моделлю 8/40. | Нормативи Work Package, UCP/PERT-оцінка, фокус-фактор 0.625 і CPM-планування. | Виконано | `fix: address supervisor feedback` |
 
 ## Технологічний стек
 
-| Шар | Технології | Інженерне призначення |
+| Категорія | Технології | Інженерне призначення |
 |:--|:--|:--|
-| Frontend framework | Vue 3, Composition API, TypeScript | Типобезпечна реактивна SPA |
-| State management | Pinia, Immer.js | Імутабельний стан графа, single source of truth |
-| UI & interactivity | Tailwind CSS, PrimeVue, `@vuedraggable` | Адаптивний інтерфейс, split panels, drag-and-drop |
-| Canvas & layout | Mermaid.js, SVG / Canvas API, WebCola, Dagre-D3 | Лейаут і live-preview діаграм |
-| Backend core | Python, FastAPI, Pydantic v2 | Асинхронна бізнес-логіка та DTO-контракти |
-| Graph processing | NetworkX, rustworkx | DFS/BFS, замикання, топологічне сортування, CPM |
-| Storage & persistence | PostgreSQL, SQLAlchemy v2, Alembic, Apache AGE | Реляційно-графове збереження і Cypher-запити |
-| Task queue & cache | Redis, Celery / ARQ | Фонові розрахунки й webhook-workers |
-| Cloud & ecosystem | Jira REST API v3, Linear GraphQL API, Boto3, Google Drive API | Синхронізація беклогу та публікація |
-| Reporting & export | openpyxl / exceljs, WeasyPrint | Excel/CSV-матриці та PDF за IEEE 830 |
-| DevOps & verification | Docker, Docker Compose, GitHub Actions, Pytest, Playwright, SonarCloud, Trivy | CI/CD, тестування й аудит безпеки |
+| Frontend architecture | Vue 3, TypeScript, Pinia, Vue Router | Реактивна SPA та детерміноване керування станом. |
+| Graph visualization | Cytoscape.js, WebGL Canvas, SVG pipelines | Візуалізація ASG і підсвічування радіуса впливу. |
+| Backend & API | Python 3.11+, FastAPI, Pydantic v2, Uvicorn, WebSockets | Асинхронний API, валідація даних, gateway. |
+| Graph computing | NetworkX, SciPy / NumPy, rustworkx | Tarjan SCC, замикання, топологічне сортування. |
+| Database & persistence | PostgreSQL 16+, Apache AGE, SQLAlchemy 2 Asyncio | Реляційно-графове збереження, JSONB, openCypher, OCC. |
+| Reliability pipeline | Redis 7+, Celery, Transactional Outbox Worker | Черги, дедуплікація та доставка подій. |
+| Distributed state | Vector Clocks, conflict-resolution layer | Порядок паралельних змін і розв’язання конфліктів. |
+| Enterprise integrations | Jira REST API v3, Linear GraphQL, boto3 / S3 | Беклог і хмарне архівування. |
+| DevSecOps & testing | Docker, GitHub Actions, Pytest, Playwright, Trivy, Semgrep | CI/CD, SAST, аудит образів, E2E-тестування. |
+| Observability & QA | SonarCloud, k6, OpenTelemetry, Prometheus | Quality gates, telemetry, контроль $p95 \leq 150\text{ ms}$. |
 
 ---
 
-## English summary
+## English version
 
-### Web System for End-to-End Software Requirements Modeling, Reactive Two-Way UML Generation, Verification Backlog, and Automated Effort Estimation
+### Bachelor’s Degree Qualification Project Proposal
 
-**Project name:** UseTrace Studio  
-*Enterprise Requirements Lifecycle, Visual Modeling & WBS Engine*
+**Topic:** *Development of a Distributed System for End-to-End Software Requirements Modeling and Traceability Based on Semantic Graphs with Transactional Consistency and Automated Effort Estimation*  
+**Specialty:** F2 Software Engineering  
+**Working product title:** **UseTrace Studio** — *Enterprise Requirements Lifecycle, Visual Modeling & WBS Engine*  
+**System classification:** distributed web-oriented SaaS platform (SPA with an asynchronous processing backend).
 
-Industrial software teams often maintain requirements, architecture, QA, and planning in isolated toolchains. This fragmentation causes **Requirements Traceability Decay**: late specification changes introduce broken execution paths, obsolete regression suites, and inaccurate delivery estimates.
+### Background and purpose
 
-UseTrace Studio is a web-oriented SaaS Single Page Application built around an **Attributed Directed Graph**, the **Abstract Semantic Graph (ASG)**, which acts as the single source of truth. Its mission is to bridge informal client descriptions and engineering implementation by automating requirements formalization, UML modeling, verification-backlog generation, 8/40 WBS estimation, and cloud artifact publishing.
+Requirements volatility creates divergence between specifications, architecture diagrams, verification artifacts, and task backlogs. UseTrace Studio addresses this through an **Abstract Semantic Graph** that acts as the single source of truth, performs consistency checks and transitive impact analysis, and reliably synchronizes derived artifacts.
 
-It provides:
+### Primary engineering objectives
 
-1. **Multi-tier semantic metamodel** — strict typing across Business, User, Functional, and Non-Functional requirements, with implicit-requirement detection.
-2. **Two-way reactive diagrams** — continuous bi-directional synchronization of DSL and Use Case, Sequence, and Activity projections.
-3. **Impact and verification analysis** — transitive-closure analysis identifies broken contracts and obsolete test suites after a change.
-4. **Parametric WBS estimation** — algorithmic work-breakdown estimation calibrated to an 8/40 workweek and engineer-focus factor $\eta_{focus} = 0.625$, with CPM scheduling.
-5. **Bi-directional backlog synchronization** — Outbox-driven mapping to Jira/Linear Epics, Stories, technical tasks, and bug templates.
-6. **IEEE 830 specification compiler** — automated generation and cloud publication of enterprise-grade Markdown and PDF specifications.
+1. Implement a typed ASG core with `derives`, `refines`, `satisfies`, `verifies`, and `conflicts` relations.
+2. Detect cycles using Tarjan’s SCC algorithm, calculate delta-impact radius, and audit traceability gaps.
+3. Provide lossless round-trip synchronization of structured requirements and Use Case, Sequence, and Activity UML projections.
+4. Build a parametric WBS engine combining UCP, technical/environmental factors, PERT, CPM, and the 8/40 planning model.
+5. Use Transactional Outbox and vector clocks for resilient, conflict-aware Jira/Linear synchronization.
+6. Publish a versioned requirements archive to authorized cloud storage.
+7. Enforce quality gates and security checks through a DevSecOps pipeline with automated tests and performance monitoring.
 
-> **Core idea:** every requirement, diagram element, test, task, and document fragment remains traceable through one semantic graph.
+> **Core idea:** every requirement, diagram element, test, WBS package, backlog item, and archived document is traceable through one semantically consistent graph.
