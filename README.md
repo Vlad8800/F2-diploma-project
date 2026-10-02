@@ -1,6 +1,6 @@
 # F2-diploma-project
 Enterprise Requirements Lifecycle, Visual Modeling &amp; WBS Engine (UseTrace Studio) — Bachelor Thesis Project
-## 📅 Індивідуальний календарний план розробки
+## Індивідуальний календарний план розробки
 
 | № з/п | Назва етапу кваліфікаційної роботи | Термін виконання (Місяць) | Період (Timeline) | Статус |
 | :---: | :--- | :---: | :---: | :---: |
