@@ -14,6 +14,25 @@
 
 ---
 
+## 🔗 Робочі матеріали та офіційні артефакти
+
+- **Google Docs (Розділ 1):** [F2_Diploma_Chapter1_Сусла.docx](https://docs.google.com/document/d/1wP_xX9oF754uOmUTOfg-G3Rx0-t483BIhNHmLb9WiaQ/edit) 
+- **Локальний артефакт в репозиторії:** [`/docs/1_analysis.md`](./1_analysis.md)
+
+---
+
+## 📊 Матриця нефункціональних вимог (NFRs Matrix)
+
+| Категорія NFR | Інженерний критерій | Затверджена чисельна метрика / Стандарт (2026) |
+| :--- | :--- | :--- |
+| **Продуктивність** | API Response Latency | TTFB на 95-му перцентилі ($p95$) $< 150$ мс при навантаженні 500 RPS (FastAPI / ASGI). |
+| **Швидкодія графа** | DAG Recalculation Time | Перерозрахунок топології графа в RAM $< 50$ мс для $10^4$ вузлів ($O(V+E)$, NetworkX). |
+| **Безпека & Auth** | Authentication & Protocols | OAuth 2.0 / OIDC із JWT (RS256); шифрування трафіку TLS 1.3 / WSS. |
+| **Комплаєнс** | Data Protection | Відповідність OWASP Top 10 (2026) та GDPR (сувора анонімізація журналів аудиту). |
+| **Надійність** | Fault Tolerance & Infra | Stateless API-вузли у Docker-контейнерах; Uptime 99.9%; WAL-реплікація PostgreSQL 16. |
+
+---
+
 ## 📅 Індивідуальний календарний план розробки
 
 | № з/п | Назва етапу кваліфікаційної роботи | Термін виконання (Місяць) | Період (Timeline) | Статус |
