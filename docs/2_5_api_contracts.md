@@ -1,0 +1,503 @@
+# 2.5. Специфікація міжсервісних контрактів (API Contracts)
+
+**Система:** UseTrace Studio  
+**Формат:** OpenAPI 3.0.3, YAML; версія контракту 1.2.0  
+**Статус:** проєкт API-First контракту; реалізація та генерація SDK ще не підтверджені.
+
+## 2.5.1. Контейнери й критичні інтерфейси
+
+Контракт описує взаємодію двох контейнерів архітектури C4 Level 2: **Frontend SPA (Vue 3)** → **Backend API (FastAPI)**. SPA надсилає HTTPS-запити через Nginx; Nginx маршрутизує їх до Backend API. Backend перевіряє токен OIDC, членство та право в проєкті, а потім працює з PostgreSQL. Redis обслуговує обмеження частоти запитів. PostgreSQL і Redis не є сторонами цього REST-контракту.
+
+Три первинно обрані інтерфейси покривають основний сценарій керування вимогою:
+
+| № | Операція | Взаємодія контейнерів | Результат |
+| --- | --- | --- | --- |
+| 1 | `POST /api/v1/projects/{projectId}/requirements` | SPA передає назву, формулювання й тип; API перевіряє право `write` та атомарно створює вимогу, ревізію №1 і подію аудиту. | `201`, нова вимога, `Location` і ревізії проєкту та графа. |
+| 2 | `GET /api/v1/projects/{projectId}/requirements/{requirementId}` | SPA запитує поточний стан; API перевіряє право `read` та читає вимогу у своєму проєкті. | `200`, поля вимоги, редакційна версія й поточні ревізії. |
+| 3 | `PUT /api/v1/projects/{projectId}/requirements/{requirementId}` | SPA надсилає весь набір редагованих полів і `expected_version`; API перевіряє право `write`, конфлікти та дозволений перехід статусу. | `200` із новою версією або `409` без перезапису конкурентної зміни. |
+
+Після інтеграційного аудиту до фінального контракту додано ще дві операції: `POST /api/v1/projects/{projectId}/requirement-dependencies` для напрямленого ребра DAG і `PUT /api/v1/projects/{projectId}/requirements/{requirementId}/review-acknowledgement` для підтвердження перегляду залежної вимоги. Це розширення пов'язує контракт з алгоритмами підрозділу 2.6. Первинний каркас, промпт і звіт ШІ-аудитора зберігаються окремо в **AI Insights** як хронологія кроку 2; наведений нижче YAML є фінальною редакцією.
+
+## 2.5.2. Фінальний OpenAPI-контракт
+
+Скопіювати вміст наступного блока до `openapi.yaml`. Поля `id`, `code`, `version` і часові мітки створює сервер. `needs_review` є системним прапорцем і не входить до тіла редакційного `PUT`.
+
+````yaml
+openapi: 3.0.3
+info:
+  title: UseTrace Studio Requirements API
+  version: 1.2.0
+  description: REST contract for requirements, directed dependencies and review acknowledgement.
+servers:
+  - url: https://{host}
+    variables:
+      host:
+        default: localhost
+tags:
+  - name: Requirements
+security:
+  - oidcBearer: []
+paths:
+  /api/v1/projects/{projectId}/requirements:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [Requirements]
+      operationId: createRequirement
+      summary: Create a requirement and its first immutable revision
+      description: Requires project write permission. Under the project row lock the server reserves a monotonic code number (REQ-0001 through REQ-99999999), creates the draft requirement and immutable revision 1, increments project_revision and graph_revision, records one audit event, and commits atomically. Any failure rolls back all records; exhaustion returns 409 CODE_EXHAUSTED.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequirement'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              description: URL of the created requirement
+              schema:
+                type: string
+            X-Project-Revision:
+              $ref: '#/components/headers/ProjectRevision'
+            X-Graph-Revision:
+              $ref: '#/components/headers/GraphRevision'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Requirement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/v1/projects/{projectId}/requirements/{requirementId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequirementId'
+    get:
+      tags: [Requirements]
+      operationId: getRequirement
+      summary: Read a requirement in the authorized project
+      description: Requires project read permission.
+      responses:
+        '200':
+          description: Current requirement state
+          headers:
+            X-Project-Revision:
+              $ref: '#/components/headers/ProjectRevision'
+            X-Graph-Revision:
+              $ref: '#/components/headers/GraphRevision'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Requirement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    put:
+      tags: [Requirements]
+      operationId: replaceRequirement
+      summary: Replace editable requirement fields if the version matches
+      description: Requires project write permission. The request supplies all editable fields. draft and approved may transition to draft, approved or archived; archived is terminal for PUT. An invalid transition returns 409 INVALID_STATUS_TRANSITION. An editorial change creates an immutable revision and increments version atomically. A system-only needs_review change never increments editorial version. Repeating an old expected_version returns 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplaceRequirement'
+      responses:
+        '200':
+          description: Updated requirement and new version
+          headers:
+            X-Project-Revision:
+              $ref: '#/components/headers/ProjectRevision'
+            X-Graph-Revision:
+              $ref: '#/components/headers/GraphRevision'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Requirement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/v1/projects/{projectId}/requirement-dependencies:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [Requirements]
+      operationId: createRequirementDependency
+      summary: Add a directed dependency if the active graph remains acyclic
+      description: Requires project write permission. source_id to target_id is the direction of potential change impact; changing source_id may require target_id review. Both endpoints must be active requirements of this project. Under the project row lock the server reads the current graph from PostgreSQL, runs Kahn cycle detection and atomically inserts the edge (including its internal UUID), increments graph_revision and project_revision and records one audit event. A duplicate edge or cycle returns 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequirementDependency'
+      responses:
+        '201':
+          description: Dependency created
+          headers:
+            X-Project-Revision:
+              $ref: '#/components/headers/ProjectRevision'
+            X-Graph-Revision:
+              $ref: '#/components/headers/GraphRevision'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementDependency'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/v1/projects/{projectId}/requirements/{requirementId}/review-acknowledgement:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequirementId'
+    put:
+      tags: [Requirements]
+      operationId: acknowledgeRequirementReview
+      summary: Clear needs_review after reviewing the current requirement and project state
+      description: Requires project write or qa permission. Under the project row lock, require expected_version and expected_project_revision to match, then set needs_review to false, increment only project_revision and record one audit event. The editorial version and immutable revisions are unchanged. A stale state returns 409 VERSION_CONFLICT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcknowledgeReview'
+      responses:
+        '200':
+          description: Current requirement after acknowledgement
+          headers:
+            X-Project-Revision:
+              $ref: '#/components/headers/ProjectRevision'
+            X-Graph-Revision:
+              $ref: '#/components/headers/GraphRevision'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Requirement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    oidcBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OIDC access token signed with RS256. Backend checks issuer, audience, expiry and project membership and permission.
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RequirementId:
+      name: requirementId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    CreateRequirement:
+      type: object
+      additionalProperties: false
+      required: [title, statement, type]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        statement:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: The application validates a requirement modal word; violation returns 400 VALIDATION_ERROR.
+        type:
+          type: string
+          enum: [functional, nonfunctional]
+    ReplaceRequirement:
+      type: object
+      additionalProperties: false
+      required: [expected_version, title, statement, type, status]
+      properties:
+        expected_version:
+          type: integer
+          format: int32
+          minimum: 1
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        statement:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: The application validates a requirement modal word; violation returns 400 VALIDATION_ERROR.
+        type:
+          type: string
+          enum: [functional, nonfunctional]
+        status:
+          type: string
+          enum: [draft, approved, archived]
+    Requirement:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, code, title, statement, type, status, version, needs_review, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          pattern: '^REQ-[0-9]{4,8}$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        statement:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: The application validates a requirement modal word; violation returns 400 VALIDATION_ERROR.
+        type:
+          type: string
+          enum: [functional, nonfunctional]
+        status:
+          type: string
+          enum: [draft, approved, archived]
+        version:
+          type: integer
+          format: int32
+          minimum: 1
+        needs_review:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreateRequirementDependency:
+      type: object
+      additionalProperties: false
+      required: [source_id, target_id]
+      properties:
+        source_id:
+          type: string
+          format: uuid
+        target_id:
+          type: string
+          format: uuid
+          description: Must differ from source_id. A directed edge source_id to target_id means that a change to source_id may affect target_id. Enforced by the service and database CHECK.
+    RequirementDependency:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, source_id, target_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Server-generated audit entity identifier.
+        project_id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        target_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+    AcknowledgeReview:
+      type: object
+      additionalProperties: false
+      required: [expected_version, expected_project_revision]
+      properties:
+        expected_version:
+          type: integer
+          format: int32
+          minimum: 1
+        expected_project_revision:
+          type: integer
+          format: int64
+          minimum: 0
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message, request_id]
+      properties:
+        code:
+          type: string
+          enum: [VALIDATION_ERROR, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VERSION_CONFLICT, CODE_CONFLICT, CODE_EXHAUSTED, INVALID_STATUS_TRANSITION, RATE_LIMITED, DEPENDENCY_UNAVAILABLE, GRAPH_CYCLE, DUPLICATE_DEPENDENCY]
+        message:
+          type: string
+        request_id:
+          type: string
+        fields:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, issue]
+            properties:
+              field:
+                type: string
+              issue:
+                type: string
+        current_version:
+          type: integer
+          minimum: 1
+          description: Present for VERSION_CONFLICT when disclosure is authorized.
+  headers:
+    ProjectRevision:
+      description: Monotonic project revision after the operation or at the read snapshot.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    GraphRevision:
+      description: Monotonic active graph revision after the operation or at the read snapshot.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+  responses:
+    BadRequest:
+      description: Invalid path, body or field validation. FastAPI validation failures are mapped to 400 VALIDATION_ERROR rather than the framework default 422.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Missing, invalid or expired access token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Insufficient project permission
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Project or requirement is absent or hidden by access policy
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Conflict:
+      description: Version conflict, exhausted code space, invalid status transition, duplicate dependency or graph cycle
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    RateLimited:
+      description: More than 100 REST requests from one verified client IP in a rolling 60 second window
+      headers:
+        Retry-After:
+          description: Whole seconds until another request may be accepted
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unavailable:
+      description: Temporary backend dependency failure or graph traversal deadline, including unavailable Redis limiter. A3 rollback maps to 503 DEPENDENCY_UNAVAILABLE.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+````
+
+## 2.5.3. Семантика операцій та помилок
+
+| Операція | Право | Успіх | Важливі відмови |
+| --- | --- | --- | --- |
+| `createRequirement` | `write` | `201`; створена вимога, ревізія №1, `Location` | `400 VALIDATION_ERROR`, `409 CODE_EXHAUSTED` або `CODE_CONFLICT` |
+| `getRequirement` | `read` | `200`; поточний стан | `404 NOT_FOUND` для відсутнього або прихованого ресурсу |
+| `replaceRequirement` | `write` | `200`; нова редакційна версія | `409 VERSION_CONFLICT` або `INVALID_STATUS_TRANSITION` |
+| `createRequirementDependency` | `write` | `201`; ребро з серверним UUID | `400` самопетля; `409 GRAPH_CYCLE` або `DUPLICATE_DEPENDENCY` |
+| `acknowledgeRequirementReview` | `write` або `qa` | `200`; `needs_review=false`, нова ревізія проєкту | `409 VERSION_CONFLICT` за зміни вимоги або проєкту після читання |
+
+Для всіх операцій діють `401` за відсутнього чи невалідного токена, `403` за браку права, `404` за політикою приховування чужого ресурсу, `429` за перевищення 100 запитів за рухомі 60 секунд і `503` за недоступності обов'язкової залежності. `429` повертає `Retry-After`. FastAPI має перетворювати власну стандартну помилку валідації `422` на описаний контрактом `400 VALIDATION_ERROR`. Тіло помилки містить `code`, `message`, `request_id` і, за потреби, `fields`; токен, IP та повний текст вимоги в повідомлення не включаються.
+
+Успішні відповіді містять `X-Project-Revision` і `X-Graph-Revision` типу `int64`. `project_revision` зростає на одну підтверджену бізнес-операцію. `graph_revision` зростає за зміни активного складу вершин або ребер. `requirements.version` зростає лише за редакційної зміни `title`, `statement`, `type` або `status`. Встановлення чи скидання `needs_review` не створює нової редакційної ревізії. Підтвердження перегляду порівнює і `expected_version`, і `expected_project_revision` під блокуванням рядка проєкту.
+
+Ребро `source_id → target_id` означає: зміна джерельної вимоги може вплинути на цільову. API відхиляє самопетлю, ребро з архівним кінцем, дублікат та цикл. Серверний `id` ребра використовується для `audit_events.entity_id`. Створення вимоги та її першої ревізії, резервування коду, оновлення ревізій і запис аудиту виконуються в одній транзакції. Вичерпання простору кодів повертає `409 CODE_EXHAUSTED` без часткового запису.
+
+## 2.5.4. Перевірка та розміщення
+
+| Крок | Артефакт | Стан |
+| --- | --- | --- |
+| 1. Базовий каркас | Три обрані критичні інтерфейси описані в 2.5.1; їхній первинний YAML збережений в AI Insights. | Виконано. |
+| 2. API Gatekeeper | Промпт, початковий каркас, повний звіт і рішення щодо зауважень зафіксовані в AI Insights. | Виконано. |
+| 3. Рефакторинг | Фінальний YAML містить п'ять операцій, типізовані схеми, JWT Bearer, валідацію, ревізії та помилки 4xx/503. Структурно перевірено локальні `$ref`: нерозв'язаних посилань не виявлено. | Зміст підготовлено; незалежний OpenAPI-валідатор і генератор SDK на редакції 1.2.0 не запускалися. |
+| 4. PKM Workspace | Цей текст призначений для підрозділу 2.5 сторінки «Розділ 2. Проєктування архітектури системи»; історію аудиту слід тримати у блоці AI Insights. | Факт вставлення та відображення в PKM перевіряється після перенесення. |
+
+Для інструментальної перевірки слід зберегти **лише YAML із 2.5.2** як `openapi.yaml`, запустити сумісний з OpenAPI 3.0.3 валідатор і генератор клієнта, перевірити всі п'ять `operationId` та схеми запитів, відповідей і помилок. Після вставлення в PKM слід перевірити відображення підсвіченого YAML-блока. Цей документ не видає ці зовнішні перевірки за виконані.
